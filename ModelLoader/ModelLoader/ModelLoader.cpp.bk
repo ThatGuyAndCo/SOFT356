@@ -1,0 +1,380 @@
+#include <iostream>
+#include <string>
+#include <vector>
+#include "GL/glew.h"
+#include "GL/freeglut.h"
+#include "GLFW/glfw3.h"
+#include "LoadShaders.h"
+#include "controller.h"
+#include "OBJLoader.h"
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
+#include <glm/glm.hpp>
+#include <glm/gtx/transform.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/ext/matrix_clip_space.hpp> // GLM: perspective and ortho 
+#include <glm/gtc/type_ptr.hpp> // GLM: access to the value_ptr
+#include <cstdlib>
+using namespace std;
+
+void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
+
+class objModel {
+
+
+public:
+	void draw() {
+
+	}
+};
+
+class pipeline{
+
+	GLFWwindow* win;
+	GLuint winWidth;
+	GLuint winHeight;
+
+	bool menuOpen = false;
+	bool quitProg = false;
+
+public:
+	void openMenu() {
+		menuOpen = true;
+		cout << "\n\nOpening menu\n";
+	}
+
+	void assignWindow(GLFWwindow* win, GLfloat width, GLfloat height) {
+		this->win = win;
+		this->winWidth = width;
+		this->winHeight = height;
+	}
+
+	void initGL() {
+		glEnable(GL_DEPTH_TEST);
+		glDepthFunc(GL_LESS);
+		glEnable(GL_CULL_FACE);
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+		GLuint VertexArrayID;
+		glGenVertexArrays(1, &VertexArrayID);
+		glBindVertexArray(VertexArrayID);
+
+		vector<glm::vec3> modelVertices;
+		vector<glm::vec2> modelUVs;
+		vector<glm::vec3> modelNormals;
+
+		bool result = loadOBJFile("../Test Files (Model Loader)/suzanne.obj", modelVertices, modelUVs, modelNormals);
+	    //bool result = loadOBJFile("../Test Files (Model Loader)/cube.obj", modelVertices, modelUVs, modelNormals);
+
+		if (result == false) {
+			glfwDestroyWindow(win);
+			glDeleteVertexArrays(1, &VertexArrayID);
+			glfwTerminate();
+			return;
+		}
+
+		GLuint modelVertexBuffer;
+		glGenBuffers(1, &modelVertexBuffer);
+		glBindBuffer(GL_ARRAY_BUFFER, modelVertexBuffer);
+		glBufferData(GL_ARRAY_BUFFER, modelVertices.size() * sizeof(glm::vec3), &modelVertices[0], GL_STATIC_DRAW);
+
+		GLuint modelUVBuffer;
+		glGenBuffers(1, &modelUVBuffer);
+		glBindBuffer(GL_ARRAY_BUFFER, modelUVBuffer);
+		glBufferData(GL_ARRAY_BUFFER, modelUVs.size() * sizeof(glm::vec2), &modelUVs[0], GL_STATIC_DRAW);
+
+		GLuint modelNormBuffer;
+		glGenBuffers(1, &modelNormBuffer);
+		glBindBuffer(GL_ARRAY_BUFFER, modelNormBuffer);
+		glBufferData(GL_ARRAY_BUFFER, modelNormals.size() * sizeof(glm::vec3), &modelNormals[0], GL_STATIC_DRAW);
+
+		ShaderInfo shaders[] =
+		{
+			{ GL_VERTEX_SHADER, "Shaders/modelLoader.vert" },
+			{ GL_FRAGMENT_SHADER, "Shaders/modelLoader.frag" },
+			{ GL_NONE, NULL }
+		};
+
+		GLuint program = LoadShaders(shaders);
+		// load and create a texture 
+		// -------------------------
+
+		// texture 1
+		// ---------
+		GLuint texture;
+		glGenTextures(1, &texture);
+		glBindTexture(GL_TEXTURE_2D, texture);
+		// set the texture wrapping parameters
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);	// set texture wrapping to GL_REPEAT (default wrapping method)
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+		// set texture filtering parameters
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		// load image, create texture and generate mipmaps
+		GLint width, height, nrChannels;
+		stbi_set_flip_vertically_on_load(false); // tell stb_image.h to flip loaded texture's on the y-axis.
+
+		unsigned char* data = stbi_load("../Test Files (Model Loader)/texTest.png", &width, &height, &nrChannels, 0);
+
+		if (data)
+		{
+			cout << "Reached the if(data)";
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+			cout << "passed glTexImage2D";
+			glGenerateMipmap(GL_TEXTURE_2D);
+			cout << "Reached end of if(data)";
+		}
+		else
+		{
+			cout << "Failed to load texture" << endl;
+		}
+		stbi_image_free(data);
+
+		GLuint texID = glGetUniformLocation(program, "texSampler");
+		GLuint MVPMatrixID = glGetUniformLocation(program, "mvp");
+		GLuint viewMatrixID = glGetUniformLocation(program, "viewSpace");
+		GLuint modelMatrixID = glGetUniformLocation(program, "modelSpace");
+		GLuint lightPosId = glGetUniformLocation(program, "lightPos");
+		GLuint lightColId = glGetUniformLocation(program, "lightCol");
+		GLuint lightStrId = glGetUniformLocation(program, "lightStr");
+
+		setControllerWindow(win);
+		glfwSetInputMode(win, GLFW_STICKY_KEYS, GL_FALSE);
+		glfwSetKeyCallback(win, key_callback);
+		glfwSetCursorPos(win, winWidth / 2, winHeight / 2);
+
+		glClearColor(0.6f, 0.6f, 0.8f, 0.0f);
+
+		do {
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			glUseProgram(program);
+
+			if (!menuOpen) {
+				computeMatricesFromInputs();
+			}
+			else {
+				cout << "\n\nMenu opened. Type a command and press enter to continue.";
+				cout << "\n\tType 'q' to quit";
+				cout << "\n\tType 'h' to change horizontal mouse sensitivity";
+				cout << "\n\tType 'v' to change vertical mouse sensitivity";
+				cout << "\n\tType 's' to change movement speed";
+				cout << "\n\tType anything else to resume\n\n";
+
+				string input;
+				cin >> input;
+				//Switch cant be used with strings so old fashioned way:
+
+				if (input == "q") {
+					quitProg = true;
+					continue;
+				} else if(input == "h") {
+					changeHorizMouseSpeed();
+				}
+				else if(input == "v") {
+					changeVertMouseSpeed();
+				}
+				else if(input == "s") {
+					changeSpeed();
+				}
+				else {
+					cout << "\n\nClosing menu\n";
+					menuOpen = false;
+				}
+
+				continue;
+			}
+
+			glm::mat4 projectionMatrix = getProjectionMatrix();
+			glm::mat4 viewMatrix = getViewMatrix();
+			glm::mat4 modelMatrix = glm::mat4(1.0f);
+
+			glm::mat4 modelViewProjection = projectionMatrix * viewMatrix * modelMatrix;
+
+			glUniformMatrix4fv(MVPMatrixID, 1, GL_FALSE, &modelViewProjection[0][0]);
+			glUniformMatrix4fv(viewMatrixID, 1, GL_FALSE, &viewMatrix[0][0]);
+			glUniformMatrix4fv(modelMatrixID, 1, GL_FALSE, &modelMatrix[0][0]);
+
+			glUniform3f(lightPosId, 4.0f, 4.0f, 4.0f);
+			glUniform3f(lightColId, 1.0f, 1.0f, 1.0f);
+			glUniform1f(lightStrId, 50.0f);
+
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, texture);
+			glUniform1i(texID, 0);
+
+			glEnableVertexAttribArray(0);
+			glBindBuffer(GL_ARRAY_BUFFER, modelVertexBuffer);
+			glVertexAttribPointer(
+				0,
+				3,
+				GL_FLOAT,
+				GL_FALSE,
+				0,
+				(void*)0
+			);
+			glEnableVertexAttribArray(1);
+			glBindBuffer(GL_ARRAY_BUFFER, modelUVBuffer);
+			glVertexAttribPointer(
+				1,
+				2,
+				GL_FLOAT,
+				GL_FALSE,
+				0,
+				(void*)0
+			);
+			glEnableVertexAttribArray(2);
+			glBindBuffer(GL_ARRAY_BUFFER, modelNormBuffer);
+			glVertexAttribPointer(
+				2,
+				3,
+				GL_FLOAT,
+				GL_FALSE,
+				0,
+				(void*)0
+			);
+			glDrawArrays(GL_TRIANGLES, 0, modelVertices.size());
+
+			glDisableVertexAttribArray(0);
+			glDisableVertexAttribArray(1);
+			glDisableVertexAttribArray(2);
+
+			// Swap buffers
+			glfwSwapBuffers(win);
+			glfwPollEvents();
+		} while (quitProg == false &&
+			glfwWindowShouldClose(win) == 0);
+
+		glfwDestroyWindow(win);
+
+		// Cleanup VBO and shader
+		glDeleteBuffers(1, &modelVertexBuffer);
+		glDeleteBuffers(1, &modelUVBuffer);
+		glDeleteBuffers(1, &modelNormBuffer);
+		glDeleteProgram(program);
+		glDeleteTextures(1, &texture);
+		glDeleteVertexArrays(1, &VertexArrayID);
+
+		glfwTerminate();
+	}
+};
+
+//glm::mat4 multiplyModelMatrix(glm::mat4 translationMat, glm::mat4 rotationMat, glm::mat4 scaleMat) {
+	//glm::mat4 modelMat = translationMat * rotationMat * scaleMat;
+	//return modelMat;
+//}
+
+//glm::mat4 CameraMatrix = glm::lookAt(cameraWorldPosition, cameraTargetWorldPosition Vector3.up);
+
+void viewTutorial() {
+	cout << "Load the first model by ladedahdedah\n";
+	cout << "Once the model is loaded, keep this console window in view, as menu information will be printed here.\n";
+	cout << "Use the WASD keys to move and strafe the camera, QE to raise/lower the camera respectively, and the mouse to rotate the camera.\n";
+	cout << "Hold the Shift key to make the camera move faster.\n";
+	cout << "The camera will likely initially be inside the model when a scene is loaded, if you cannot see the model please try and reorient yourself with the WASD keys and the mouse.\n";
+	cout << "At any point press the escape key to open a list of commands.\n";
+	cout << "\nThe menu will have the following commands available:\n";
+	cout << "\t- Load New Model in New Scene\n";
+	cout << "\t- Add New Model to Scene\n";
+	cout << "\t- Remove Model From Scene\n";
+	cout << "\t- Toggle Model Rotation\n";
+	cout << "\t- Change Texture for Model\n";
+	cout << "\t- Change Background Colour\n";
+	cout << "\t- Change Movement Speed\n";
+	cout << "\t- Change Mouse Horizontal Sensitivity\n";
+	cout << "\t- Change Mouse Vertical Sensitivity\n";
+	cout << "\t- Change Field Of View\n";
+	cout << "\t- Change View Type (Persp/Orth)\n";
+	cout << "\t- Reset Camera to Default\n";
+	cout << "\t- Quit Program\n";
+	cout << "\nEach menu option will describe what they do as well as which inputs are required.\n";
+	cout << "Please note, each model that is loaded into a scene will be given a number, depending on what order they are loaded in (starting from 1).\n";
+	cout << "This number will be printed to the console alongside the Model's filename for reference.\n";
+	cout << "Please take note of which number is assigned to which model if you wish to use the 'Remove Model' or 'Change Texture' options.\n";
+	cout << "Please quit the program by pressing 'Quit Program' or by clicking the 'X' on the Model Viewer window.\n";
+	system("Pause");
+}
+
+pipeline p;
+
+void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
+{
+	if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
+		try{
+			p.openMenu();
+		}
+		catch (...) {}
+	}
+}
+
+int main()
+{
+	GLuint skipTut = -1;
+	cout << "Welcome to the model loader.\n";
+	cout << "Would you like to see a tutorial of what this loader can do? Y/N\n";
+	do {
+		string input;
+		cin >> input;
+		cout << '\n';
+		if (input == "y" || input == "Y") {
+			skipTut = 0;
+		}
+		else if (input == "n" || input == "N") {
+			skipTut = 1;
+		}
+		else {
+			cout << "Please input only 'y' or 'n', then press Enter.\n";
+		}
+	} while (skipTut == -1);
+
+	if (skipTut == 0) {
+		viewTutorial();
+	}
+
+	glewExperimental = true; // Needed for core profile
+	if (!glfwInit())
+	{
+		cout << "Failed to initialize GLFW. Exiting Model Loader.";
+		return -1;
+	}
+
+	//glfwWindowHint(GLFW_SAMPLES, 4);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
+	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+
+	//Floats for aspect ratio
+	GLfloat windowWidth = 1920;
+	GLfloat windowHeight = 1080;
+
+	GLFWwindow* win = glfwCreateWindow(windowWidth, windowHeight, "Model Loader", NULL, NULL);
+
+	if (win == NULL) {
+		//You lose. That's how that works, right?
+		cout << "Failed to open a GLFW window. Exiting Model Loader.\n";
+		glfwTerminate();
+		return -1;
+	}
+
+	glfwMakeContextCurrent(win);
+	glewExperimental = true;
+	if (glewInit() != GLEW_OK) {
+		cout << "Failed to initialise GLEW. Exiting Model Loader.\n";
+		return -1;
+	}
+	p.assignWindow(win, windowWidth, windowHeight);
+	p.initGL();
+}
+
+// Run program: Ctrl + F5 or Debug > Start Without Debugging menu
+// Debug program: F5 or Debug > Start Debugging menu
+
+// Tips for Getting Started: 
+//   1. Use the Solution Explorer window to add/manage files
+//   2. Use the Team Explorer window to connect to source control
+//   3. Use the Output window to see build output and other messages
+//   4. Use the Error List window to view errors
+//   5. Go to Project > Add New Item to create new code files, or Project > Add Existing Item to add existing code files to the project
+//   6. In the future, to open this project again, go to File > Open > Project and select the .sln file
