@@ -32,7 +32,7 @@ bool loadOBJFile(const char* path, vector<glm::vec3>& ret_verts, vector<glm::vec
 			const char* filePath = path;
 			char readPath[1000];
 
-			if(errno_t splitPath = _splitpath_s(
+			if (errno_t splitPath = _splitpath_s(
 				filePath,
 				NULL,
 				0,
@@ -42,8 +42,8 @@ bool loadOBJFile(const char* path, vector<glm::vec3>& ret_verts, vector<glm::vec
 				sizeof(readPath),
 				NULL,
 				0
-			) == 0){
-				for (unsigned int i = 0; i < 999; i++) { //ignore first char as this will be a space
+			) == 0) {
+				for (unsigned int i = 0; i < (sizeof(readPath) / sizeof(readPath[0])); i++) { //ignore first char as this will be a space
 					if (readPath[i] == NULL)
 						break;
 					else {
@@ -99,10 +99,10 @@ bool loadOBJFile(const char* path, vector<glm::vec3>& ret_verts, vector<glm::vec
 						readChar, sizeof(readChar)
 					);
 
-					for (unsigned int i = 1; i < 999; i++) { //ignore first char as this will be a space
+					for (unsigned int i = 1; i < (sizeof(readChar) / sizeof(readChar[0])); i++) { //ignore first char as this will be a space
 						if (readChar[i] == NULL)
 							break;
-						else{
+						else {
 							//cout << readChar[i];
 							lineAsStr = lineAsStr + readChar[i];
 						}
@@ -214,10 +214,7 @@ bool loadOBJFile(const char* path, vector<glm::vec3>& ret_verts, vector<glm::vec
 					}
 
 				}
-				else if (strcmp(lineHead, "mtl") == 0) {
-
-				}
-				else { //Dont care about line if not a vert, uv, normal or index
+				else { //Dont care about line if not a vert, uv, normal or index so consume the line
 					char munch[1000];
 					fscanf_s(objFile, ".+\n", munch, sizeof(munch));
 				}

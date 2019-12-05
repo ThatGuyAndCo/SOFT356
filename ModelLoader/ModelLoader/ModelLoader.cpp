@@ -9,6 +9,7 @@
 #include "LoadShaders.h"
 #include "controller.h"
 #include "OBJLoader.h"
+#include "DAELoader.h"
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
@@ -48,7 +49,7 @@ string getFileName(wchar_t* filter = L"All Files (*.*)\0*.*\0") {
 	return "";
 }
 
-class objModel {
+class model {
 	GLuint program;
 	GLuint modelVertexBuffer;
 	GLuint modelUVBuffer;
@@ -71,20 +72,45 @@ public:
 	vector<glm::vec3> modelVertices;
 
 	bool loadModel(GLuint paramProgram, unsigned int numModelsLoaded, string objectPath) {
+		if (objectPath == "") {
+			cout << "No file selected, returning to menu.";
+			return false;
+		}
+
 		glGenVertexArrays(1, &VertexArrayID);
 		glBindVertexArray(VertexArrayID);
 
 		program = paramProgram;
 
-		bool result = loadOBJFile(objectPath.c_str(), modelVertices, modelUVs, modelNormals, modelId);
+
+		bool result;
+
+		cout << "\nFiletype? = " << objectPath[objectPath.length() - 3] << objectPath[objectPath.length() - 2] << objectPath[objectPath.length() - 1] << "\n";
+
+		if ((objectPath[objectPath.length() - 3] == 'd' || objectPath[objectPath.length() - 3] == 'D') &&
+			(objectPath[objectPath.length() - 2] == 'a' || objectPath[objectPath.length() - 2] == 'A') &&
+			(objectPath[objectPath.length() - 1] == 'e' || objectPath[objectPath.length() - 1] == 'E')) {
+			result = loadDAEFile(objectPath.c_str(), modelVertices, modelUVs, modelNormals, modelId);
+		}
+		else if ((objectPath[objectPath.length() - 3] == 'o' || objectPath[objectPath.length() - 3] == 'O') &&
+			(objectPath[objectPath.length() - 2] == 'b' || objectPath[objectPath.length() - 2] == 'B') &&
+			(objectPath[objectPath.length() - 1] == 'j' || objectPath[objectPath.length() - 1] == 'J')) {
+			result = loadOBJFile(objectPath.c_str(), modelVertices, modelUVs, modelNormals, modelId);
+		}
+		else {
+			cout << "\nFile type not recognised, please try again with a .obj file or a .dae file.\n";
+			result = false;
+		}
 
 		if (result == false) {
 			return false;
 		}
 
 		if (modelId == "unknown") {
-			modelId = "Model" + (numModelsLoaded + 1);
+			modelId = "Model"; 
 		}
+
+		modelId = modelId + "_" + to_string(numModelsLoaded + 1);
 
 		modelVertexBuffer;
 		glGenBuffers(1, &modelVertexBuffer);
@@ -122,7 +148,7 @@ public:
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
 		GLint width, height, nrChannels;
-		stbi_set_flip_vertically_on_load(false);
+		stbi_set_flip_vertically_on_load(true);
 
 		bool goodTextureLoaded = false;
 
@@ -168,7 +194,7 @@ public:
 		std::cmatch match;
 		std::regex ex("(-)?(\[0-9]+)(\.\[0-9]*)?");
 
-		std::cout << "How much should the model's 'x' be increased by?\nEnter a positive/negative float to continue, or any other value to cancel, then press enter.\nCurrent value is: " << modelMatrix[0][3] << "\t";
+		std::cout << "How much should the model's 'x' be increased by?\nEnter a positive/negative float to continue, or any other value to cancel, then press enter.";
 
 		std::string input;
 		float xChange = 0.0f;
@@ -182,7 +208,7 @@ public:
 			return;
 		}
 
-		std::cout << "How much should the model's 'y' be increased by?\nEnter a positive/negative float to continue, or any other value to cancel, then press enter.\nCurrent value is: " << modelMatrix[1][3] << "\t";
+		std::cout << "How much should the model's 'y' be increased by?\nEnter a positive/negative float to continue, or any other value to cancel, then press enter.";
 
 		float yChange = 0.0f;
 		std::cin >> input;
@@ -195,7 +221,7 @@ public:
 			return;
 		}
 
-		std::cout << "How much should the model's 'z' be increased by?\nEnter a positive/negative float to continue, or any other value to cancel, then press enter.\nCurrent value is: " << modelMatrix[2][3] << "\t";
+		std::cout << "How much should the model's 'z' be increased by?\nEnter a positive/negative float to continue, or any other value to cancel, then press enter.";
 
 		float zChange = 0.0f;
 		std::cin >> input;
@@ -210,9 +236,7 @@ public:
 
 		std::cout << "\n";
 
-		modelMatrix[0][3] += xChange;
-		modelMatrix[1][3] += yChange;
-		modelMatrix[2][3] += zChange;
+		modelMatrix = glm::translate(modelMatrix, glm::vec3(xChange, yChange, zChange));
 
 		//modelMatrix = newModelMatrix;
 		cout << "Translation applied, returning to menu.";
@@ -343,9 +367,9 @@ class pipeline{
 	GLFWwindow* win;
 	GLuint winWidth;
 	GLuint winHeight;
-	unsigned int numModelsLoaded;
+	unsigned int numModelsLoaded = 0;
 
-	vector<objModel> modelList;
+	vector<model> modelList;
 
 	bool menuOpen = false;
 	bool quitProg = false;
@@ -363,14 +387,15 @@ public:
 	}
 
 	void loadNewModel(GLuint program) {
-		objModel newModel;
-		cout << "\n\nPlease select an OBJ file to load:";
-		string objPath = getFileName(L"OBJ Files (*.obj)\0*.obj\0");
+		model newModel;
+		cout << "\n\nPlease select an OBJ or DAE file to load:";
+		string objPath = getFileName(L"OBJ Files (*.obj)\0*.obj\0DAE Files(*.dae)\0*.dae\0");
 
 		bool success = newModel.loadModel(program, numModelsLoaded, objPath);
 
 		if (success) {
 			modelList.push_back(newModel);
+			numModelsLoaded++;
 		}
 		else {
 			newModel.cleanup();
@@ -395,11 +420,10 @@ public:
 			cout << "\nNo models to delete.\n";
 			return;
 		}
-		cout << "\n\nPlease enter a model ID to delete from scene: ";
+		cout << "\n\nPlease enter a model ID to delete from scene (case sensitive): ";
 		string modelID;
 		getline(cin, modelID);
 
-		objModel temp;
 		bool match = false;
 
 		for (unsigned int i = 0; i < modelList.size(); i++) {
@@ -423,11 +447,10 @@ public:
 			cout << "\nNo models to change texture on.\n";
 			return;
 		}
-		cout << "\n\nPlease enter a model ID to modify its texture: ";
+		cout << "\n\nPlease enter a model ID to modify its texture (case sensitive): ";
 		string modelID;
 		getline(cin, modelID);
 
-		objModel temp;
 		bool match = false;
 
 		for (unsigned int i = 0; i < modelList.size(); i++) {
@@ -447,11 +470,10 @@ public:
 			cout << "\nNo models to change matrix of.\n";
 			return;
 		}
-		cout << "\n\nPlease enter a model ID to modify its position: ";
+		cout << "\n\nPlease enter a model ID to modify its position (case sensitive): ";
 		string modelID;
 		getline(cin, modelID);
 
-		objModel temp;
 		bool match = false;
 
 		for (unsigned int i = 0; i < modelList.size(); i++) {
@@ -471,11 +493,10 @@ public:
 			cout << "\nNo models to change matrix of.\n";
 			return;
 		}
-		cout << "\n\nPlease enter a model ID to modify its scale: ";
+		cout << "\n\nPlease enter a model ID to modify its scale (case sensitive): ";
 		string modelID;
 		getline(cin, modelID);
 
-		objModel temp;
 		bool match = false;
 
 		for (unsigned int i = 0; i < modelList.size(); i++) {
@@ -624,7 +645,7 @@ public:
 //glm::mat4 CameraMatrix = glm::lookAt(cameraWorldPosition, cameraTargetWorldPosition Vector3.up);
 
 void viewTutorial() {
-	cout << "Load the first model by ladedahdedah\n";
+	cout << "Load the first model by pressing the escape key and typing \"load new model\" into the console.\n";
 	cout << "Once the model is loaded, keep this console window in view, as menu information will be printed here.\n";
 	cout << "Use the WASD keys to move and strafe the camera, QE to raise/lower the camera respectively, and the mouse to rotate the camera.\n";
 	cout << "Hold the Shift key to make the camera move faster.\n";
@@ -662,8 +683,9 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 int main()
 {
 	GLuint skipTut = -1;
-	cout << "Welcome to the model loader.\n";
-	cout << "Would you like to see a tutorial of what this loader can do? Y/N\n";
+	cout << "Welcome to the model loader.\n";	
+	cout << "Please type all menu commands in lower case.\n";
+	cout << "Would you like to see a tutorial of what this loader can do? y/n\n";
 	do {
 		string input;
 		cin >> input;
@@ -697,8 +719,8 @@ int main()
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
 	//Floats for aspect ratio
-	GLfloat windowWidth = 1920;
-	GLfloat windowHeight = 1080;
+	GLfloat windowWidth = 1280;
+	GLfloat windowHeight = 720;
 
 	GLFWwindow* win = glfwCreateWindow(windowWidth, windowHeight, "Model Loader", NULL, NULL);
 

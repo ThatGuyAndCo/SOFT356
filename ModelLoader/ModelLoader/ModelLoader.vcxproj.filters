@@ -24,13 +24,10 @@
     <ClCompile Include="controller.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="ModelTransformer.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="OBJLoader.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="FBXLoader.cpp">
+    <ClCompile Include="DAELoader.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -47,13 +44,10 @@
     <ClInclude Include="controller.h">
       <Filter>Source Files</Filter>
     </ClInclude>
-    <ClInclude Include="ModelTransformer.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
     <ClInclude Include="OBJLoader.h">
       <Filter>Source Files</Filter>
     </ClInclude>
-    <ClInclude Include="FBXLoader.h">
+    <ClInclude Include="DAELoader.h">
       <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>
