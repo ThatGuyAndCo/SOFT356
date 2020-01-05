@@ -10,6 +10,9 @@
 #include "controller.h"
 #include "OBJLoader.h"
 #include "DAELoader.h"
+#include "ProcGen.h"
+#include "ProcGenStructure.h"
+#include "ProcGenRoom.h"
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
@@ -187,6 +190,101 @@ public:
 		
 	}
 
+	//Method same as old loader, except it takes a static path rather than prompting the user
+	bool procGenLoadModel(GLuint paramProgram, unsigned int numModelsLoaded, string objectPath) {
+		if (objectPath == "") {
+			cout << "No file selected, returning to menu.";
+			return false;
+		}
+
+		glGenVertexArrays(1, &VertexArrayID);
+		glBindVertexArray(VertexArrayID);
+
+		program = paramProgram;
+
+
+		bool result;
+
+		if ((objectPath[objectPath.length() - 3] == 'd' || objectPath[objectPath.length() - 3] == 'D') &&
+			(objectPath[objectPath.length() - 2] == 'a' || objectPath[objectPath.length() - 2] == 'A') &&
+			(objectPath[objectPath.length() - 1] == 'e' || objectPath[objectPath.length() - 1] == 'E')) {
+			result = loadDAEFile(objectPath.c_str(), modelVertices, modelUVs, modelNormals, modelId);
+		}
+		else if ((objectPath[objectPath.length() - 3] == 'o' || objectPath[objectPath.length() - 3] == 'O') &&
+			(objectPath[objectPath.length() - 2] == 'b' || objectPath[objectPath.length() - 2] == 'B') &&
+			(objectPath[objectPath.length() - 1] == 'j' || objectPath[objectPath.length() - 1] == 'J')) {
+			result = loadOBJFile(objectPath.c_str(), modelVertices, modelUVs, modelNormals, modelId);
+		}
+		else {
+			cout << "\nFile type not recognised, please try again with a .obj file or a .dae file.\n";
+			result = false;
+		}
+
+		if (result == false) {
+			return false;
+		}
+
+		if (modelId == "unknown") {
+			modelId = "Model";
+		}
+
+		modelId = modelId + "_" + to_string(numModelsLoaded + 1);
+
+		modelVertexBuffer;
+		glGenBuffers(1, &modelVertexBuffer);
+		glBindBuffer(GL_ARRAY_BUFFER, modelVertexBuffer);
+		glBufferData(GL_ARRAY_BUFFER, modelVertices.size() * sizeof(glm::vec3), &modelVertices[0], GL_STATIC_DRAW);
+		modelUVBuffer;
+		glGenBuffers(1, &modelUVBuffer);
+		glBindBuffer(GL_ARRAY_BUFFER, modelUVBuffer);
+		glBufferData(GL_ARRAY_BUFFER, modelUVs.size() * sizeof(glm::vec2), &modelUVs[0], GL_STATIC_DRAW);
+		modelNormBuffer;
+		glGenBuffers(1, &modelNormBuffer);
+		glBindBuffer(GL_ARRAY_BUFFER, modelNormBuffer);
+		glBufferData(GL_ARRAY_BUFFER, modelNormals.size() * sizeof(glm::vec3), &modelNormals[0], GL_STATIC_DRAW);
+
+		modelMatrix = glm::mat4(1.0f);
+
+		texID = glGetUniformLocation(program, "texSampler");
+		MVPMatrixID = glGetUniformLocation(program, "mvp");
+		modelMatrixID = glGetUniformLocation(program, "modelSpace");
+
+		procGenChangeTexture();
+		cout << "\nSuccessfully loaded model. Model's ID is: " << modelId << ". Returning to menu.\n\n";
+		glBindVertexArray(NULL);
+		return true;
+	}
+
+	//Same as prev texture load except uses static texture
+	void procGenChangeTexture() { //Tex load code uses code provided in SOFT356 repo
+		glGenTextures(1, &texture);
+		glBindTexture(GL_TEXTURE_2D, texture);
+
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+		GLint width, height, nrChannels;
+		stbi_set_flip_vertically_on_load(true);
+
+		string filePath = "Test Files (Model Loader)/stone-granite-4-TEX.png";
+
+		unsigned char* data = stbi_load(filePath.c_str(), &width, &height, &nrChannels, 0);
+		if (data)
+		{
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+			glGenerateMipmap(GL_TEXTURE_2D);
+			textureApplied = true;
+		}
+		else
+		{
+			cout << "\nFailed to load texture.";
+		}
+		stbi_image_free(data);
+	}
+
 	void modifyModelMatrix() {
 		cout << "\nEntering translate\n";
 		//glm::mat4 newModelMatrix = modelMatrix;		
@@ -240,6 +338,11 @@ public:
 
 		//modelMatrix = newModelMatrix;
 		cout << "Translation applied, returning to menu.";
+	}
+
+	//2D translate added rather than overwriting the existing code
+	void procGenTranslate(int xCoord, int zCoord) {
+		modelMatrix = glm::translate(modelMatrix, glm::vec3(xCoord, 0, zCoord));
 	}
 
 	void modifyModelScale() {
@@ -298,6 +401,10 @@ public:
 		//modelMatrix = newModelMatrix;
 		cout << "Translation applied, returning to menu.";
 	}
+
+	void rotateModelAroundY(float degrees) {
+		modelMatrix = glm::rotate(modelMatrix, glm::radians(degrees), glm::vec3(0, 1, 0));
+	}
 	
 	void draw(glm::mat4 projectionMatrix, glm::mat4 viewMatrix) {
 		glUseProgram(program);
@@ -352,6 +459,34 @@ public:
 		glBindVertexArray(NULL);
 	}
 
+	//For pg goal state interaction
+	void drawForPicker(glm::mat4 projectionMatrix, glm::mat4 viewMatrix, GLuint pickerProg) {
+		cout << "drawing model id " << modelId << " using pickerShader";
+		glUseProgram(pickerProg);
+		glBindVertexArray(VertexArrayID);
+
+		//modelMatrix = glm::mat4(1.0f);
+		glm::mat4 modelViewProjection = projectionMatrix * viewMatrix * modelMatrix;
+
+		glUniformMatrix4fv(glGetUniformLocation(pickerProg, "mvp"), 1, GL_FALSE, &modelViewProjection[0][0]);
+
+		glEnableVertexAttribArray(0);
+		glBindBuffer(GL_ARRAY_BUFFER, modelVertexBuffer);
+		glVertexAttribPointer(
+			0,
+			3,
+			GL_FLOAT,
+			GL_FALSE,
+			0,
+			(void*)0
+		);
+
+		glDrawArrays(GL_TRIANGLES, 0, modelVertices.size());
+
+		glDisableVertexAttribArray(0);
+		glBindVertexArray(NULL);
+	}
+
 	void cleanup() {
 		// Cleanup VBO and shader
 		glDeleteBuffers(1, &modelVertexBuffer);
@@ -371,6 +506,13 @@ class pipeline{
 
 	vector<model> modelList;
 
+	procGenProcess pgp;
+	procGenStructure currentPGS;
+	GLuint program;
+	GLuint pickerProgram;
+	model goalState;
+	bool pgReachedGoal = false;
+
 	bool menuOpen = false;
 	bool quitProg = false;
 
@@ -385,6 +527,101 @@ public:
 		this->winWidth = width;
 		this->winHeight = height;
 	}
+	
+	/****************************************************************************************PG CODE********************************************************************************************/
+	
+	void assignProcGenProcess(procGenProcess pgp, GLuint program) {
+		this->pgp = pgp;
+		generateNewStructure(program);
+	}
+
+	void regenerateStructure(GLuint program) {
+		procGenClearLevel();
+		currentPGS = pgp.generateStructure(true);
+		loadStructureModels(program);
+	}
+
+	void generateNewStructure(GLuint program) {
+		procGenClearLevel();
+		currentPGS = pgp.generateStructure(false);
+		loadStructureModels(program);
+	}
+
+	void loadStructureModels(GLuint program) {
+		cout << "\n\nSuccessfully reached 'load models'! Structure is as follows:\n\n";
+		unsigned int startingXY = currentPGS.getSpawnRoom().getXCoord();
+
+		for (int i = 0; i < currentPGS.getRoomList().size(); i++) {
+			cout << "Coords: [" << currentPGS.getRoomList()[i].getXCoord() + 1 << "," << currentPGS.getRoomList()[i].getYCoord() + 1 << "], Model type: " << currentPGS.getRoomList()[i].getModelNumber() << ", Rotation degrees: " << currentPGS.getRoomList()[i].getRotationDegrees() << "\n";
+			int xCoord = currentPGS.getRoomList()[i].getXCoord() - startingXY;
+			int zCoord = currentPGS.getRoomList()[i].getYCoord() - startingXY;
+			loadProcGenModel(program, currentPGS.getRoomList()[i].getModelNumber(), -xCoord, -zCoord, currentPGS.getRoomList()[i].getRotationDegrees(), currentPGS.getRoomList()[i].getIsGoalRoom());
+		}
+		centerViewMatrix();
+	}
+
+	void loadProcGenModel(GLuint program, string modelNumber, int xCoord, int zCoord, float rotationDegrees, bool goalRoom) {
+		model newModel;
+		string objPath = "Test Files (Model Loader)/" + modelNumber + ".obj";
+
+		bool success = newModel.procGenLoadModel(program, numModelsLoaded, objPath);
+
+		if (success) {
+			newModel.procGenTranslate(xCoord, zCoord);
+			newModel.rotateModelAroundY(rotationDegrees);
+			modelList.push_back(newModel);
+			numModelsLoaded++;
+			if (goalRoom)
+				goalState = newModel;
+		}
+		else {
+			newModel.cleanup();
+		}
+	}
+
+	void procGenClearLevel() {
+		for (unsigned int i = 0; i < modelList.size(); i++) {
+			modelList[i].cleanup();
+		}
+		modelList.clear();
+	}
+
+	//Code adapted from https://github.com/opengl-tutorials/ogl/blob/master/misc05_picking/misc05_picking_slow_easy.cpp
+	void checkGoalState() {
+		if (menuOpen)
+			return;
+
+		glUseProgram(program);
+		// Clear the screen to white
+		glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		glUseProgram(pickerProgram);
+		glFinish();
+		goalState.drawForPicker(getProjectionMatrix(), getViewMatrix(), pickerProgram);
+
+		glFinish();
+		glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+		unsigned char data[4];
+		glReadPixels(winWidth / 2, winHeight / 2, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, data);
+
+		int pickedID =
+			data[0] +
+			data[1] * 256 +
+			data[2] * 256 * 256;
+
+		cout << pickedID;
+
+		if (pickedID != 0x00ffffff) { // Not white, must be only rendered object (i.e. red/goal)
+			pgReachedGoal = true;
+			cout << "\nReached goal, regenerating with same level size.\n";
+		}
+		else {
+			cout << "\nGoal is not in center of screen.\n";
+		}
+	}
+
+	/****************************************************************************************PG CODE********************************************************************************************/
 
 	void loadNewModel(GLuint program) {
 		model newModel;
@@ -511,6 +748,10 @@ public:
 		}
 	}
 
+	void rotateModelMatrix() {
+
+	}
+
 	void initGL() {
 		glEnable(GL_DEPTH_TEST);
 		glDepthFunc(GL_LESS);
@@ -527,7 +768,16 @@ public:
 			{ GL_NONE, NULL }
 		};
 
-		GLuint program = LoadShaders(shaders);
+		program = LoadShaders(shaders);
+
+		ShaderInfo pShaders[] =
+		{
+			{ GL_VERTEX_SHADER, "Shaders/picker.vert" },
+			{ GL_FRAGMENT_SHADER, "Shaders/picker.frag" },
+			{ GL_NONE, NULL }
+		};
+
+		pickerProgram = LoadShaders(pShaders);
 
 		GLuint viewMatrixID = glGetUniformLocation(program, "viewSpace");
 		GLuint lightPosId = glGetUniformLocation(program, "lightPos");
@@ -538,25 +788,29 @@ public:
 		glfwSetInputMode(win, GLFW_STICKY_KEYS, GL_FALSE);
 		glfwSetKeyCallback(win, key_callback);
 		glfwSetCursorPos(win, winWidth / 2, winHeight / 2);
-
-		glClearColor(0.6f, 0.6f, 0.8f, 0.0f);
+		
+		procGenProcess pgp = procGenProcess();
+		assignProcGenProcess(pgp, program);
 
 		do {
+			glClearColor(0.6f, 0.6f, 0.8f, 0.0f);
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 			glUseProgram(program);
 
-			if (!menuOpen) {
+			if (!menuOpen && !pgReachedGoal) {
 				computeMatricesFromInputs();
 			}
 			else {
 				cout << "\n\nMenu opened. Type a command and press enter to continue.";
 				cout << "\n\tType 'quit' to quit";
-				cout << "\n\tType 'load new model' to load a new model into the scene";
+				/*cout << "\n\tType 'load new model' to load a new model into the scene";
 				cout << "\n\tType 'list existing models' to list the IDs of all models in the scene";
 				cout << "\n\tType 'clear existing model' to delete an existing model from the scene";
 				cout << "\n\tType 'modify model texture' to load a new texture for an existing model";
 				cout << "\n\tType 'translate model' to move an existing model around the scene";
-				cout << "\n\tType 'scale model' to change an existing model's size";
+				cout << "\n\tType 'scale model' to change an existing model's size";*/
+				cout << "\n\tType 'gen level' to generate a new level structure";
+				cout << "\n\tType 'regen level' to generate a new level structure with the same number of rooms";
 				cout << "\n\tType 'change horizontal sensitivity' to change horizontal mouse sensitivity";
 				cout << "\n\tType 'change vertical sensitivity' to change vertical mouse sensitivity";
 				cout << "\n\tType 'change movement speed' to change movement speed";
@@ -564,25 +818,35 @@ public:
 				cout << "\n\tType anything else to resume\n\n";
 
 				string input;
-				getline(cin, input);
+				getline(cin >> ws, input);
 				//Switch cant be used with strings so old fashioned way:
 
 				if (input == "quit") {
 					quitProg = true;
 					continue;
-				} else if(input == "change horizontal sensitivity") {
+				}
+				else if (input == "change horizontal sensitivity") {
 					changeHorizMouseSpeed();
 				}
-				else if(input == "change vertical sensitivity") {
+				else if (input == "change vertical sensitivity") {
 					changeVertMouseSpeed();
 				}
-				else if(input == "change movement speed") {
+				else if (input == "change movement speed") {
 					changeSpeed();
 				}
 				else if (input == "reset camera") {
 					resetCamera();
 				}
-				else if (input == "load new model") {
+				else if (input == "gen level") {
+					generateNewStructure(program);
+				}
+				else if (input == "regen level") {
+					regenerateStructure(program);
+				}
+				else if (input == "c") {
+					centerViewMatrix();
+				}
+				/*else if (input == "load new model") {
 					loadNewModel(program);
 				}
 				else if (input == "list existing models") {
@@ -599,7 +863,7 @@ public:
 				}
 				else if (input == "scale model") {
 					scaleModelMatrix();
-				}
+				}*/
 				else {
 					cout << "\n\nClosing menu\n";
 					menuOpen = false;
@@ -623,6 +887,12 @@ public:
 			// Swap buffers
 			glfwSwapBuffers(win);
 			glfwPollEvents();
+
+			if (pgReachedGoal) {
+				pgReachedGoal = false;
+				regenerateStructure(program);
+			}
+
 		} while (quitProg == false &&
 			glfwWindowShouldClose(win) == 0);
 
@@ -645,29 +915,30 @@ public:
 //glm::mat4 CameraMatrix = glm::lookAt(cameraWorldPosition, cameraTargetWorldPosition Vector3.up);
 
 void viewTutorial() {
-	cout << "Load the first model by pressing the escape key and typing \"load new model\" into the console.\n";
-	cout << "Once the model is loaded, keep this console window in view, as menu information will be printed here.\n";
+	/*cout << "Load the first model by pressing the escape key and typing \"load new model\" into the console.\n";
+	cout << "Once the model is loaded, keep this console window in view, as menu information will be printed here.\n";*/
+	cout << "After loading the program, tab back to the console. Input a number of rooms to start the generation procedure.\n";
+	cout << "Once the structure is loaded, keep this console window in view, as menu information will be printed here.\n";
 	cout << "Use the WASD keys to move and strafe the camera, QE to raise/lower the camera respectively, and the mouse to rotate the camera.\n";
 	cout << "Hold the Shift key to make the camera move faster.\n";
-	cout << "The camera will likely initially be inside the model when a scene is loaded, if you cannot see the model please try and reorient yourself with the WASD keys and the mouse.\n";
+	cout << "The camera will be centered to the 'starting cell', which will be the cell in the center of the array. If you cannot see the structure please try and reorient yourself with the WASD keys and the mouse.\n";
+	cout << "The goal room has a small pedestal in the middle. Pointing the center of the screen at this room and pressing the 'f' key will consider the level completed and load a new structure with the same number of rooms.\n";
 	cout << "At any point press the escape key to open a list of commands.\n";
 	cout << "\nThe menu will have the following commands available:\n";
-	cout << "\t- Add New Model to Scene\n";
+	/*cout << "\t- Add New Model to Scene\n";
 	cout << "\t- Remove Model From Scene\n";
-	cout << "\t- Change Texture for Model\n";
+	cout << "\t- Change Texture for Model\n";*/
+	cout << "\t- Generate a new random level with a new number of cells\n";
+	cout << "\t- Generate a new random level with the same number of cells\n";
 	cout << "\t- Change Movement Speed\n";
 	cout << "\t- Change Mouse Horizontal Sensitivity\n";
 	cout << "\t- Change Mouse Vertical Sensitivity\n";
 	cout << "\t- Reset Camera to Default\n";
 	cout << "\t- Quit Program\n";
 	cout << "\nEach menu option will describe what they do as well as which inputs are required.\n";
-	cout << "Please note, each model that is loaded into a scene will be given a number, depending on what order they are loaded in (starting from 1).\n";
-	cout << "This number will be printed to the console alongside the Model's filename for reference.\n";
-	cout << "Please take note of which number is assigned to which model if you wish to use the 'Remove Model' or 'Change Texture' options.\n";
 	cout << "Please quit the program by pressing 'Quit Program' or by clicking the 'X' on the Model Viewer window.\n";
 	system("Pause");
 }
-
 pipeline p;
 
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
@@ -675,6 +946,12 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 	if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
 		try{
 			p.openMenu();
+		}
+		catch (...) {}
+	}
+	else if (key == GLFW_KEY_F && action == GLFW_PRESS) {
+		try {
+			p.checkGoalState();
 		}
 		catch (...) {}
 	}

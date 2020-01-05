@@ -8,6 +8,8 @@ void computeMatricesFromInputs();
 glm::mat4 getViewMatrix();
 glm::mat4 getProjectionMatrix();
 
+void centerViewMatrix();
+glm::vec3 getViewPos();
 void changeSpeed();
 void changeHorizMouseSpeed();
 void changeVertMouseSpeed();

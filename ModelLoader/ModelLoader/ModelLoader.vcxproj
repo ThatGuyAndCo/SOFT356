@@ -154,6 +154,9 @@
     <ClCompile Include="ModelLoader.cpp" />
     <ClCompile Include="LoadShaders.cpp" />
     <ClCompile Include="OBJLoader.cpp" />
+    <ClCompile Include="ProcGen.cpp" />
+    <ClCompile Include="ProcGenRoom.cpp" />
+    <ClCompile Include="ProcGenStructure.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
@@ -163,6 +166,9 @@
     <ClInclude Include="DAELoader.h" />
     <ClInclude Include="LoadShaders.h" />
     <ClInclude Include="OBJLoader.h" />
+    <ClInclude Include="ProcGen.h" />
+    <ClInclude Include="ProcGenRoom.h" />
+    <ClInclude Include="ProcGenStructure.h" />
     <ClInclude Include="stb_image.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

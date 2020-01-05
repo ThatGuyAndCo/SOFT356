@@ -15,7 +15,7 @@ out vec4 colour;
 
 void main()
 {
-	/*vec3 matDiffuse = texture(texSampler, UV).rgb;
+	vec3 matDiffuse = texture(texSampler, UV).rgb;
 	float alpha = texture(texSampler, UV).a;
 	vec3 matAmbient = vec3(0.2, 0.2, 0.2) * matDiffuse;
 	vec3 matSpecular = vec3(0.3, 0.3, 0.3);
@@ -32,6 +32,6 @@ void main()
 	colour = vec4((matDiffuse * lightCol * lightStr * normToLight / pow(distToLight, 2)) +
 		matAmbient + 
 		(matSpecular * lightCol * lightStr * pow(reflectToView, 3) / pow(distToLight, 2)), 
-		alpha);*/
-	colour = texture(texSampler, UV);
+		alpha);
+	//colour = texture(texSampler, UV);
 }

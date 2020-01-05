@@ -7,7 +7,7 @@
 GLFWwindow* win;
 bool menuOpen = false;
 
-glm::vec3 pos = glm::vec3(0,-1,0);
+glm::vec3 pos = glm::vec3(0,1,0);
 float horizAngle = 0.0f;
 float vertAngle = -0.75f;
 float FOV = 70.0f;
@@ -127,6 +127,15 @@ void computeMatricesFromInputs() {
 	);
 
 	lastFrameTime = currFrameTime;
+}
+
+void centerViewMatrix() {
+	std::cout << "\ncentering view pos\n";
+	pos = glm::vec3(0, 1, 0);
+}
+
+glm::vec3 getViewPos() {
+	return pos;
 }
 
 glm::mat4 getViewMatrix() {
