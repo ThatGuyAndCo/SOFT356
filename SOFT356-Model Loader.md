@@ -1,5 +1,5 @@
 # __SOFT356- Procedurally Generated Level__
-# Jake Morgan
+# Jake Morgan - https://github.com/ThatGuyAndCo/SOFT356
 
 
 #IMPORTANT
